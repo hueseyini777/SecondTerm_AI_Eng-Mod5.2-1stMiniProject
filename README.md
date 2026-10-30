@@ -13,6 +13,50 @@ It follows the earlier strategy lesson by turning the selected hybrid pattern
 into an assessed implementation with a real local fine-tuning run and a
 measured comparison against a baseline RAG system.
 
+## My Implementation
+
+### Architecture
+
+| Step | Module | What it does |
+| --- | --- | --- |
+| Data validation | [src/data.py](src/data.py) | Loads policies, training examples and held-out cases; checks IDs, source references and train/eval leakage |
+| Retrieval | [src/retrieval.py](src/retrieval.py) | One chunk per paragraph, `all-MiniLM-L6-v2` embeddings, Qdrant (in-memory, cosine), `top_k=3`, threshold `0.30` |
+| Prompt | [src/prompts.py](src/prompts.py) | One chat-template prompt shared by training and both answer paths |
+| LoRA training | [src/training.py](src/training.py) | PEFT LoRA on SmolLM2-135M-Instruct (`q_proj`/`v_proj`, r=8, alpha=16), loss on answer tokens only |
+| Answer paths | [src/generation.py](src/generation.py) | `base-only`, `rag-base` (baseline), `rag-lora` (hybrid); citation validation, status `answered`/`abstained`/`rejected` |
+| Evaluation | [src/evaluation.py](src/evaluation.py) | Retrieval metrics once; relevance, faithfulness, style, decisions, latency per system |
+
+New to RAG or LoRA? Start with the [Learning Guide](docs/LORA.md).
+
+### Commands
+
+Run from the project root after `uv sync` and `cp .env.example .env`:
+
+```bash
+uv run python -m src inspect-data                 # validate data, show sample chunks
+uv run python -m src retrieve "your question"     # retrieval scores, no model
+uv run python -m src train                        # real LoRA run (~70 s on a laptop CPU)
+uv run python -m src ask --system rag-base "Can support change an address after packing?"
+uv run python -m src ask --system rag-lora "Can support change an address after packing?"
+uv run python -m src evaluate                     # writes reports/benchmark_results.md
+uv run pytest tests                               # fast tests, no model downloads
+```
+
+### Results and conclusion
+
+| System | Relevance | Faithfulness (served) | Decision accuracy | Answered / 10 answerable | Abstained / 4 unanswerable |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| rag-base (baseline) | 0.000 | n/a (0 served) | 0.214 | 0 | 3 |
+| rag-lora (hybrid) | 0.350 | 0.714 | 0.500 | 5 | 2 |
+
+Retrieval is perfect on answerable cases (recall@3 = MRR = 1.0). The baseline
+model never writes `[source-id]` citations, so validation rejects all its
+answers. The adapter mainly teaches that citation habit (raw fact coverage only
+rises from 0.55 to 0.65). It also makes the model answer two near-domain
+unanswerable questions with invented facts. **Recommendation: revise; do not
+deploy yet.** Full analysis, answers to the five questions, and next
+experiments: [reports/evaluation_report.md](reports/evaluation_report.md).
+
 ## Learning Objectives
 
 By the end of this repository, you should be able to:

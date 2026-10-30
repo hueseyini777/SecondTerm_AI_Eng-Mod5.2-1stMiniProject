@@ -25,3 +25,4 @@ storage/
 solution/reports/*.json
 solution/reports/*.md
 !solution/reports/reference_evaluation.md
+reports/*.json
